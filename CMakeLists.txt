@@ -8,6 +8,13 @@ set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -DDEBUG")
 
 find_package(Boost REQUIRED COMPONENTS system serialization)
+find_package(Eigen3 REQUIRED NO_MODULE)
+
+if (Eigen3_FOUND)
+  include_directories(
+    ${EIGEN3_INCLUDE_DIR}
+  )
+endif()
 
 set(CMAKE_MODULE_PATH
     ${CMAKE_MODULE_PATH}

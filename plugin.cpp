@@ -18,10 +18,11 @@
 #include <ompl/base/spaces/DubinsStateSpace.h>
 
 #include <ompl/geometric/planners/rrt/BiTRRT.h>
-#include <ompl/geometric/planners/bitstar/BITstar.h>
+// #include <ompl/geometric/planners/bitstar/BITstar.h>
 #include <ompl/geometric/planners/kpiece/BKPIECE1.h>
-#include <ompl/geometric/planners/cforest/CForest.h>
+#include <ompl/geometric/planners/prm/DancingPRMstar.h>
 #include <ompl/geometric/planners/est/EST.h>
+#include <ompl/geometric/planners/cforest/CForest.h>
 #include <ompl/geometric/planners/fmt/FMT.h>
 #include <ompl/geometric/planners/kpiece/KPIECE1.h>
 #include <ompl/geometric/planners/prm/LazyPRM.h>
@@ -1293,7 +1294,7 @@ ob::PlannerPtr plannerFactory(Algorithm algorithm, ob::SpaceInformationPtr si)
     switch(algorithm)
     {
         PLANNER(BiTRRT);
-        PLANNER(BITstar);
+        // PLANNER(BITstar);
         PLANNER(BKPIECE1);
         PLANNER(CForest);
         PLANNER(EST); // needs projection
@@ -1301,6 +1302,7 @@ ob::PlannerPtr plannerFactory(Algorithm algorithm, ob::SpaceInformationPtr si)
         PLANNER(KPIECE1); // needs projection
         PLANNER(LazyPRM);
         PLANNER(LazyPRMstar);
+        PLANNER(DancingPRMstar);
         PLANNER(LazyRRT);
         PLANNER(LBKPIECE1);
         PLANNER(LBTRRT);
@@ -1481,6 +1483,7 @@ void getPath(SScriptCallBack *p, const char *cmd, getPath_in *in, getPath_out *o
     }
 }
 
+/* Original Code
 void getData(SScriptCallBack *p, const char *cmd, getData_in *in, getData_out *out)
 {
     TaskDef *task = getTask(in->taskHandle);
@@ -1507,17 +1510,223 @@ void getData(SScriptCallBack *p, const char *cmd, getData_in *in, getData_out *o
         out->states.push_back(radius);
     }
 }
+*/
+
+void getData(SScriptCallBack *p, const char *cmd, getData_in *in, getData_out *out)
+{
+#ifdef CHOMP_ENGAGED
+  TaskDef *task = getTask(in->taskHandle);
+  try {
+    ompl::base::PlannerData data(task->spaceInformationPtr);
+    task->planner->getPlannerData(data);
+    for (unsigned int i = 0; i < data.numVertices(); i++) {
+      ompl::base::PlannerDataVertex v(data.getVertex(i));
+      int tag = v.getTag(); // -1 : a starting configuration of a trajectory, -2 : intermediate node, -3 : SDF data
+      float aux;
+      memcpy(&aux, &tag, sizeof(float));
+
+      if (aux == -1.0) { // First configuration of each path
+        const ob::StateSpace::StateType *state = v.getState();
+        std::vector<double> config;
+        task->stateSpacePtr->copyToReals(config, state);
+        for (unsigned int j = 0; j < config.size(); j++) {
+          out->states.push_back((float)config[j]);
+        }
+        out->states.push_back(aux);
+
+        std::vector<unsigned int> edge_list;
+        int idx = i;
+        while (1) {
+          data.getEdges(idx, edge_list);
+          if (edge_list.empty())
+            break;
+
+          ompl::base::PlannerDataVertex w(data.getVertex(edge_list.back()));
+          state = w.getState();
+          tag = w.getTag();
+          memcpy(&aux, &tag, sizeof(float));
+          config.clear();
+          task->stateSpacePtr->copyToReals(config, state);
+          for (unsigned int k = 0; k < config.size(); k++) {
+            out->states.push_back((float)config[k]);
+          }
+          out->states.push_back(aux);
+          idx = edge_list.back();
+        }
+
+      } else if (aux == -2.0) {
+        continue;
+
+      } else if (aux >= 0.0) { // SDF data
+        const ob::StateSpace::StateType *state = v.getState();
+        std::vector<double> config;
+        task->stateSpacePtr->copyToReals(config, state);
+
+        std::vector<unsigned int> edge_list;
+        data.getEdges(i, edge_list);
+        
+        if (edge_list.empty()) continue;
+        ompl::base::PlannerDataVertex w(data.getVertex(edge_list.back()));
+        state = w.getState();
+
+        float dest_aux;
+        tag = w.getTag();
+        memcpy(&dest_aux, &tag, sizeof(float));
+
+        if (dest_aux == -2.0) printf("Something wrong\n");
+
+        for (unsigned int k = 0; k < config.size(); k++) {
+          out->states.push_back((float)config[k]);
+        }
+        out->states.push_back(aux);
+        
+        config.clear();
+        task->stateSpacePtr->copyToReals(config, state);
+
+        for (unsigned int k = 0; k < config.size(); k++) {
+          out->states.push_back((float)config[k]);
+        }
+        out->states.push_back(dest_aux);
+      }
+    }
+  }
+  catch(ompl::Exception& ex)
+  {
+    std::string s = "OMPL: exception: ";
+    s += ex.what();
+    std::cout << s << std::endl;
+    simSetLastError(cmd, s.c_str());
+    if(task->verboseLevel >= 1)
+      simAddStatusbarMessage(s.c_str());
+  }
+#else
+  TaskDef *task = getTask(in->taskHandle);
+  float min_value = 1000.0f, max_value = 0.0f;
+
+  try
+  {
+    ompl::base::PlannerData data(task->spaceInformationPtr);
+    task->planner->getPlannerData(data);
+    for (unsigned int i = 0; i < data.numVertices(); i++) {
+      ompl::base::PlannerDataVertex v(data.getVertex(i));
+      int tag = v.getTag(); // Minimum distance to the closest X_obs for AdaptiveLazyPRM*.
+      float radius;
+      memcpy(&radius, &tag, sizeof(float));
+
+      if (radius == -1.0) { // First configuration of each path
+        const ob::StateSpace::StateType *state = v.getState();
+        std::vector<double> config;
+        task->stateSpacePtr->copyToReals(config, state);
+        for (unsigned int j = 0; j < config.size(); j++) {
+          out->states.push_back((float)config[j]);
+        }
+        out->states.push_back(radius);
+
+        std::vector<unsigned int> edge_list;
+        int idx = i;
+        while (1) {
+          data.getEdges(idx, edge_list);
+          if (edge_list.empty())
+            break;
+
+          ompl::base::PlannerDataVertex w(data.getVertex(edge_list.back()));
+          state = w.getState();
+          tag = w.getTag();
+          memcpy(&radius, &tag, sizeof(float));
+          config.clear();
+          task->stateSpacePtr->copyToReals(config, state);
+          for (unsigned int k = 0; k < config.size(); k++) {
+            out->states.push_back((float)config[k]);
+          }
+          out->states.push_back(radius);
+          idx = edge_list.back();
+        }
+
+      } else if (radius == -2.0) {
+        continue;
+
+      } else if (radius >= 0.0) {
+        const ob::StateSpace::StateType *state = v.getState();
+        std::vector<double> config;
+        task->stateSpacePtr->copyToReals(config, state);
+
+        std::vector<unsigned int> edge_list;
+        data.getEdges(i, edge_list);
+        
+        if(edge_list.empty()) continue;
+        ompl::base::PlannerDataVertex w(data.getVertex(edge_list.back()));
+        state = w.getState();
+
+        float dest_radius;
+        tag = w.getTag();
+        memcpy(&dest_radius, &tag, sizeof(float));
+
+        if (dest_radius == -2.0) printf("Something wrong\n");
+
+        for (unsigned int k = 0; k < config.size(); k++) {
+          out->states.push_back((float)config[k]);
+        }
+        out->states.push_back(radius);
+        
+        config.clear();
+        task->stateSpacePtr->copyToReals(config, state);
+
+        for (unsigned int k = 0; k < config.size(); k++) {
+          out->states.push_back((float)config[k]);
+        }
+        out->states.push_back(dest_radius);
+      }
+    }
+/*
+    for (unsigned int i = 0; i < data.numEdges(); i++) {
+       ompl::base::PlannerDataVertex v(data.getEdge(i));
+       int tag = v.getTag(); // Minimum distance to the closest X_obs for AdaptiveLazyPRM*.
+       float radius;
+       memcpy(&radius, &tag, sizeof(float));
+
+      const ob::StateSpace::StateType *state = v.getState();
+      std::vector<double> w;
+      task->stateSpacePtr->copyToReals(w, state);
+      for (unsigned int j = 0; j < w.size(); j++) {
+        out->states.push_back((float)w[j]);
+      }
+      out->states.push_back(radius);
+    }
+*/    
+  }
+  catch(ompl::Exception& ex)
+  {
+    std::string s = "OMPL: exception: ";
+    s += ex.what();
+    std::cout << s << std::endl;
+    simSetLastError(cmd, s.c_str());
+    if(task->verboseLevel >= 1)
+      simAddStatusbarMessage(s.c_str());
+  }
+#endif
+}
+
+void setParams(SScriptCallBack *p, const char *cmd, setParams_in *in, setParams_out *out) {
+  TaskDef *task = getTask(in->taskHandle);
+
+  std::map<std::string, std::string> param_map;
+  ompl::base::ParamSet& params = task->planner->params();
+  for (unsigned int i = 0; i < 2 * in->number_of_params; i += 2) { 
+    param_map[in->params[i]] = in->params[i + 1];
+  }
+  params.setParams(param_map);
+}
 
 void compute(SScriptCallBack *p, const char *cmd, compute_in *in, compute_out *out)
 {
-    TaskDef *task = getTask(in->taskHandle);
+  TaskDef *task = getTask(in->taskHandle);
 
-    setup(p, in->taskHandle);
-    out->solved = solve(p, in->taskHandle, in->maxTime);
-    if(!out->solved) return;
-    simplifyPath(p, in->taskHandle, in->maxSimplificationTime);
-    interpolatePath(p, in->taskHandle, in->stateCnt);
-    out->states = getPath(p, in->taskHandle);
+  setup(p, in->taskHandle);
+  out->solved = solve(p, in->taskHandle, in->maxTime);
+  if(!out->solved) return;
+  simplifyPath(p, in->taskHandle, in->maxSimplificationTime);
+  interpolatePath(p, in->taskHandle, in->stateCnt);
+  out->states = getPath(p, in->taskHandle);
 }
 
 void readState(SScriptCallBack *p, const char *cmd, readState_in *in, readState_out *out)

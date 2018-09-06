@@ -309,6 +309,25 @@
             </param>
         </return>
     </command>
+    <command name="setParams">
+        <description>Set parameter for the planner.</description>
+        <params>
+            <param name="taskHandle" type="int">
+                <description>a handle to a task object created with simExtOMPL_createTask.</description>
+            </param>
+            <param name="number_of_params" type="int" item-type="string">
+                <description>the number of "key value" pairs in 'params'.</description>
+            </param>
+            <param name="params" type="table" item-type="string">
+                <description>a table of strings, representing a pair of "key value" parameter for each element in the table.</description>
+            </param>
+        </params>
+        <return>
+            <param name="result" type="int" default="0">
+                <description>0 for failure.</description>
+            </param>
+        </return>
+    </command>
     <command name="compute">
         <description>Use OMPL to find a solution for this motion planning task. It is equivalent to executing:<br/>
             <br/>
@@ -450,6 +469,8 @@
         <item name="BKPIECE1">
         </item>
         <item name="CForest">
+        </item>
+        <item name="DancingPRMstar">
         </item>
         <item name="EST">
         </item>
