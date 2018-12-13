@@ -18,11 +18,11 @@
 #include <ompl/base/spaces/DubinsStateSpace.h>
 
 #include <ompl/geometric/planners/rrt/BiTRRT.h>
-// #include <ompl/geometric/planners/bitstar/BITstar.h>
+#include <ompl/geometric/planners/bitstar/BITstar.h>
 #include <ompl/geometric/planners/kpiece/BKPIECE1.h>
+#include <ompl/geometric/planners/cforest/CForest.h>
 #include <ompl/geometric/planners/prm/DancingPRMstar.h>
 #include <ompl/geometric/planners/est/EST.h>
-#include <ompl/geometric/planners/cforest/CForest.h>
 #include <ompl/geometric/planners/fmt/FMT.h>
 #include <ompl/geometric/planners/kpiece/KPIECE1.h>
 #include <ompl/geometric/planners/prm/LazyPRM.h>
@@ -44,6 +44,7 @@
 #include <ompl/geometric/planners/prm/SPARStwo.h>
 #include <ompl/geometric/planners/stride/STRIDE.h>
 #include <ompl/geometric/planners/rrt/TRRT.h>
+#include <ompl/geometric/planners/vtstar/VolumetricTree.h>
 
 #include "v_repPlusPlus/Plugin.h"
 #include "plugin.h"
@@ -252,7 +253,7 @@ public:
             cellSizes_[i] = 0.05;
     }
 
-    virtual void project(const ob::State *state, ob::EuclideanProjection& projection) const
+    virtual void project(const ob::State *state, Eigen::Ref<Eigen::VectorXd> projection) const
     {
         for(int i = 0; i < dim; i++)
             projection(i) = 0.0;
@@ -306,7 +307,7 @@ protected:
         return 0;
     }
 
-    virtual void defaultProjection(const ob::State *state, ob::EuclideanProjection& projection) const
+    virtual void defaultProjection(const ob::State *state, Eigen::Ref<Eigen::VectorXd> projection) const
     {
         const ob::CompoundState *s = state->as<ob::CompoundStateSpace::StateType>();
 
@@ -365,7 +366,7 @@ protected:
         return s;
     }
 
-    virtual void dummyPairProjection(const ob::State *state, ob::EuclideanProjection& projection) const
+    virtual void dummyPairProjection(const ob::State *state, Eigen::Ref<Eigen::VectorXd> projection) const
     {
         /*
         simFloat pos[3];
@@ -397,7 +398,7 @@ protected:
         return task->projectionEvaluation.dim;
     }
 
-    virtual void luaProjectCallback(const ob::State *state, ob::EuclideanProjection& projection) const
+    virtual void luaProjectCallback(const ob::State *state, Eigen::Ref<Eigen::VectorXd> projection) const
     {
         std::vector<double> stateVec;
         statespace->copyToReals(stateVec, state);
@@ -1294,15 +1295,15 @@ ob::PlannerPtr plannerFactory(Algorithm algorithm, ob::SpaceInformationPtr si)
     switch(algorithm)
     {
         PLANNER(BiTRRT);
-        // PLANNER(BITstar);
+        PLANNER(BITstar);
         PLANNER(BKPIECE1);
         PLANNER(CForest);
+        PLANNER(DancingPRMstar);
         PLANNER(EST); // needs projection
         PLANNER(FMT);
         PLANNER(KPIECE1); // needs projection
         PLANNER(LazyPRM);
         PLANNER(LazyPRMstar);
-        PLANNER(DancingPRMstar);
         PLANNER(LazyRRT);
         PLANNER(LBKPIECE1);
         PLANNER(LBTRRT);
@@ -1320,6 +1321,7 @@ ob::PlannerPtr plannerFactory(Algorithm algorithm, ob::SpaceInformationPtr si)
         PLANNER(SPARStwo);
         PLANNER(STRIDE);
         PLANNER(TRRT);
+        PLANNER(VolumetricTree);
     }
 #undef PLANNER
     return planner;
@@ -1483,7 +1485,7 @@ void getPath(SScriptCallBack *p, const char *cmd, getPath_in *in, getPath_out *o
     }
 }
 
-/* Original Code
+/*
 void getData(SScriptCallBack *p, const char *cmd, getData_in *in, getData_out *out)
 {
     TaskDef *task = getTask(in->taskHandle);
@@ -1564,7 +1566,7 @@ void getData(SScriptCallBack *p, const char *cmd, getData_in *in, getData_out *o
 
         std::vector<unsigned int> edge_list;
         data.getEdges(i, edge_list);
-        
+
         if (edge_list.empty()) continue;
         ompl::base::PlannerDataVertex w(data.getVertex(edge_list.back()));
         state = w.getState();
@@ -1579,7 +1581,7 @@ void getData(SScriptCallBack *p, const char *cmd, getData_in *in, getData_out *o
           out->states.push_back((float)config[k]);
         }
         out->states.push_back(aux);
-        
+
         config.clear();
         task->stateSpacePtr->copyToReals(config, state);
 
@@ -1652,7 +1654,7 @@ void getData(SScriptCallBack *p, const char *cmd, getData_in *in, getData_out *o
 
         std::vector<unsigned int> edge_list;
         data.getEdges(i, edge_list);
-        
+
         if(edge_list.empty()) continue;
         ompl::base::PlannerDataVertex w(data.getVertex(edge_list.back()));
         state = w.getState();
@@ -1667,7 +1669,7 @@ void getData(SScriptCallBack *p, const char *cmd, getData_in *in, getData_out *o
           out->states.push_back((float)config[k]);
         }
         out->states.push_back(radius);
-        
+
         config.clear();
         task->stateSpacePtr->copyToReals(config, state);
 
@@ -1683,7 +1685,6 @@ void getData(SScriptCallBack *p, const char *cmd, getData_in *in, getData_out *o
        int tag = v.getTag(); // Minimum distance to the closest X_obs for AdaptiveLazyPRM*.
        float radius;
        memcpy(&radius, &tag, sizeof(float));
-
       const ob::StateSpace::StateType *state = v.getState();
       std::vector<double> w;
       task->stateSpacePtr->copyToReals(w, state);
@@ -1692,7 +1693,7 @@ void getData(SScriptCallBack *p, const char *cmd, getData_in *in, getData_out *o
       }
       out->states.push_back(radius);
     }
-*/    
+*/
   }
   catch(ompl::Exception& ex)
   {
@@ -1711,7 +1712,7 @@ void setParams(SScriptCallBack *p, const char *cmd, setParams_in *in, setParams_
 
   std::map<std::string, std::string> param_map;
   ompl::base::ParamSet& params = task->planner->params();
-  for (unsigned int i = 0; i < 2 * in->number_of_params; i += 2) { 
+  for (unsigned int i = 0; i < 2 * in->number_of_params; i += 2) {
     param_map[in->params[i]] = in->params[i + 1];
   }
   params.setParams(param_map);
@@ -1719,14 +1720,14 @@ void setParams(SScriptCallBack *p, const char *cmd, setParams_in *in, setParams_
 
 void compute(SScriptCallBack *p, const char *cmd, compute_in *in, compute_out *out)
 {
-  TaskDef *task = getTask(in->taskHandle);
+    TaskDef *task = getTask(in->taskHandle);
 
-  setup(p, in->taskHandle);
-  out->solved = solve(p, in->taskHandle, in->maxTime);
-  if(!out->solved) return;
-  simplifyPath(p, in->taskHandle, in->maxSimplificationTime);
-  interpolatePath(p, in->taskHandle, in->stateCnt);
-  out->states = getPath(p, in->taskHandle);
+    setup(p, in->taskHandle);
+    out->solved = solve(p, in->taskHandle, in->maxTime);
+    if(!out->solved) return;
+    simplifyPath(p, in->taskHandle, in->maxSimplificationTime);
+    interpolatePath(p, in->taskHandle, in->stateCnt);
+    out->states = getPath(p, in->taskHandle);
 }
 
 void readState(SScriptCallBack *p, const char *cmd, readState_in *in, readState_out *out)

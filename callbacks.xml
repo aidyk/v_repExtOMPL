@@ -514,6 +514,8 @@
         </item>
         <item name="TRRT">
         </item>
+        <item name="VolumetricTree">
+        </item>
     </enum>
     <enum name="StateSpaceType" item-prefix="statespacetype_" base="50001">
         <item name="position2d">
